@@ -1,14 +1,14 @@
 ---
-title: Streamlit Template Space
+title: Hot Dog Classifier Test
 emoji: 🚀
 colorFrom: red
 colorTo: red
 sdk: docker
 app_port: 8501
 tags:
-  - streamlit
+- streamlit
 pinned: false
-short_description: Streamlit template space
+short_description: https://huggingface.co/docs/hub/en/spaces-sdks-streamlit
 ---
 
 # Welcome to Streamlit!
