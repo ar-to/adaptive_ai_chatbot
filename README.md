@@ -1,5 +1,5 @@
 ---
-title: Hot Dog Classifier Test
+title: Chatbot
 emoji: 🚀
 colorFrom: red
 colorTo: red
