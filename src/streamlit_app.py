@@ -35,8 +35,6 @@ for message in st.session_state.messages:
 
 # Accept user input
 if prompt := st.chat_input("What is up?"):
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
 
     # Display user message in chat message container
     with st.chat_message("user"):
@@ -48,6 +46,9 @@ if prompt := st.chat_input("What is up?"):
 
     # Display the sentiment badge directly under the user's message
     st.caption(f" Detected Sentiment: {user_sentiment.upper()} (Confidence: {analysis_result['score']:.2f})")
+
+    # Add user message to chat history with sentiment
+    # Store the sentiment in the session state for potential future use
     st.session_state.messages.append({"role": "user", "content": prompt, "sentiment": user_sentiment})
     
     # 3. Generate adaptive bot response based on emotional context
