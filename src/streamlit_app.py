@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import time
 
-st.write("Streamlit loves LLMs! 🤖 [Build your own chat app](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps) in minutes, then make it powerful by adding images, dataframes, or even input widgets to the chat.")
+st.title("🤖 Sentiment-Aware Chatbot")
 
 st.caption("Note that this demo app isn't actually connected to any LLMs. Those are expensive ;)")
 
