@@ -1,6 +1,24 @@
+from transformers import pipeline 
 import streamlit as st
 import random
 import time
+
+def simulate_typing(response):
+    """Simulate typing effect for the assistant's response."""
+    for chunk in response.split():
+        full_response += chunk + " "
+        time.sleep(0.05)
+        # Add a blinking cursor to simulate typing
+        message_placeholder.markdown(full_response + "▌")
+    message_placeholder.markdown(full_response)
+
+# Initialize the sentiment analysis model (cached to prevent reloading every rerun)
+@st.cache_resource
+def load_sentiment_pipeline():
+  # Using a robust, standard model for positive/negative/neutral tracking
+  return pipeline("text-classification", model="cardiffnlp/twitter-roberta-base-sentiment-latest")
+
+analyzer = load_sentiment_pipeline()
 
 st.title("🤖 Sentiment-Aware Chatbot")
 
@@ -19,21 +37,39 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("What is up?"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     # Display user message in chat message container
     with st.chat_message("user"):
         st.markdown(prompt)
+
+    # Run real-time sentiment analysis via Hugging Face
+    analysis_result = analyzer(prompt)[0]
+    user_sentiment = analysis_result["label"].lower() # returns 'positive', 'negative', or 'neutral'
+
+    # Display the sentiment badge directly under the user's message
+    st.caption(f" Detected Sentiment: {user_sentiment.upper()} (Confidence: {analysis_result['score']:.2f})")
+    st.session_state.messages.append({"role": "user", "content": prompt, "sentiment": user_sentiment})
+    
+    # 3. Generate adaptive bot response based on emotional context
+    if "positive" in user_sentiment:
+        assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
+    elif "negative" in user_sentiment:
+        assistant_response = "I am so sorry to hear that. I'm here if you want to vent or talk through it. ❤️"
+    else:
+        assistant_response = "Thanks for sharing that with me. Tell me more! 💬"
 
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
-        assistant_response = random.choice(
-            [
-                "Hello there! How can I assist you today?",
-                "Hi, human! Is there anything I can help you with?",
-                "Do you need help?",
-            ]
-        )
+        # assistant_response = random.choice(
+        #     [
+        #         "Hello there! How can I assist you today?",
+        #         "Hi, human! Is there anything I can help you with?",
+        #         "Do you need help?",
+        #     ]
+        # )
+
         # Simulate stream of response with milliseconds delay
         for chunk in assistant_response.split():
             full_response += chunk + " "
@@ -41,5 +77,6 @@ if prompt := st.chat_input("What is up?"):
             # Add a blinking cursor to simulate typing
             message_placeholder.markdown(full_response + "▌")
         message_placeholder.markdown(full_response)
+        # simulate_typing(assistant_response)
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": full_response})
