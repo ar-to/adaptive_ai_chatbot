@@ -1,5 +1,5 @@
 ---
-title: Chatbot
+title: Chatbot AI
 emoji: 🚀
 colorFrom: red
 colorTo: red
