@@ -24,14 +24,16 @@ analyzer = load_sentiment_pipeline()
 emotion_analyzer = load_emotion_pipeline()
 
 def predict_sentiment(prompt):
-    """Run sentiment inference, returning (label, confidence)."""
-    result = analyzer(prompt)[0]
-    return result["label"].lower(), result["score"]  # 'positive', 'negative', or 'neutral'
+    """Run sentiment inference once, returning (label, confidence, full breakdown)."""
+    breakdown = sorted(analyzer(prompt, top_k=None), key=lambda r: r["score"], reverse=True)
+    top = breakdown[0]
+    return top["label"].lower(), top["score"], breakdown  # label is 'positive', 'negative', or 'neutral'
 
 def predict_emotion(prompt):
-    """Run emotion inference, returning (label, confidence)."""
-    result = emotion_analyzer(prompt)[0]
-    return result["label"].lower(), result["score"]  # e.g. 'joy', 'anger', 'sadness', 'fear'...
+    """Run emotion inference once, returning (label, confidence, full breakdown)."""
+    breakdown = sorted(emotion_analyzer(prompt, top_k=None), key=lambda r: r["score"], reverse=True)
+    top = breakdown[0]
+    return top["label"].lower(), top["score"], breakdown  # e.g. 'joy', 'anger', 'sadness', 'fear'...
 
 def get_llm_response(prompt, history, sentiment, emotion, token):
     """Call the Hugging Face Inference API using the caller's own token."""
@@ -92,15 +94,30 @@ if prompt := st.chat_input("What is up?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Run real-time sentiment and emotion analysis via Hugging Face
-    user_sentiment, sentiment_score = predict_sentiment(prompt)
-    user_emotion, emotion_score = predict_emotion(prompt)
+    # Run real-time sentiment and emotion analysis via Hugging Face (one pass per model)
+    user_sentiment, sentiment_score, sentiment_breakdown = predict_sentiment(prompt)
+    user_emotion, emotion_score, emotion_breakdown = predict_emotion(prompt)
 
     # Display the sentiment and emotion badges directly under the user's message
     st.caption(
         f" Detected Sentiment: {user_sentiment.upper()} (Confidence: {sentiment_score:.2f}) · "
         f"Emotion: {user_emotion.upper()} (Confidence: {emotion_score:.2f})"
     )
+
+    # Full label breakdown in a collapsible dropdown, below the caption
+    with st.expander("🔍 Full analysis breakdown"):
+        st.markdown("**Sentiment scores**")
+        st.dataframe(
+            [{"label": r["label"], "confidence": f"{r['score']:.2%}"} for r in sentiment_breakdown],
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown("**Emotion scores**")
+        st.dataframe(
+            [{"label": r["label"], "confidence": f"{r['score']:.2%}"} for r in emotion_breakdown],
+            hide_index=True,
+            use_container_width=True,
+        )
 
     # Add user message to chat history with sentiment and emotion
     # Store both in the session state for potential future use
