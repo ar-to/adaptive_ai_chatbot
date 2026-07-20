@@ -2,11 +2,26 @@ from transformers import pipeline
 from huggingface_hub import InferenceClient
 import streamlit as st
 import os
+import random
 import time
 
 # HF Inference Providers' list of serverless-supported models rotates over time;
 # if calls start 404ing, swap this for a currently supported chat-completion model.
 DEFAULT_HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+
+# Shown in the spinner while a message is being analyzed and answered.
+# Tweak this list freely, or swap get_loading_message() below for an AI call
+# (e.g. request a one-line joke) to make the wait more creative.
+LOADING_MESSAGES = [
+    "Reading the room... 🧠",
+    "Weighing your words... ⚖️",
+    "Consulting the emotion oracle... 🔮",
+    "Thinking of something kind to say... 💬",
+]
+
+def get_loading_message():
+    """Text shown in the spinner while a message is analyzed and answered."""
+    return random.choice(LOADING_MESSAGES)
 
 # Initialize the sentiment analysis model (cached to prevent reloading every rerun)
 @st.cache_resource
@@ -94,9 +109,38 @@ if prompt := st.chat_input("What is up?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Run real-time sentiment and emotion analysis via Hugging Face (one pass per model)
-    user_sentiment, sentiment_score, sentiment_breakdown = predict_sentiment(prompt)
-    user_emotion, emotion_score, emotion_breakdown = predict_emotion(prompt)
+    # Block on a spinner while analysis + response generation run, so the user
+    # can't fire off a second prompt mid-flight and race the chat history.
+    with st.spinner(get_loading_message()):
+        
+        # add a small delay to simulate processing time and improve UX
+        time.sleep(0.5)
+
+        # Run real-time sentiment and emotion analysis via Hugging Face (one pass per model)
+        user_sentiment, sentiment_score, sentiment_breakdown = predict_sentiment(prompt)
+        user_emotion, emotion_score, emotion_breakdown = predict_emotion(prompt)
+
+        # Generate adaptive bot response: real LLM reply if a token is available, canned fallback otherwise
+        if active_token:
+            try:
+                assistant_response = get_llm_response(
+                    prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
+                )
+            except Exception:
+                st.error("Couldn't reach the model — check that your token is valid, or try again in a moment.")
+                if "positive" in user_sentiment:
+                    assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
+                elif "negative" in user_sentiment:
+                    assistant_response = "I am so sorry to hear that. I'm here if you want to vent or talk through it. ❤️"
+                else:
+                    assistant_response = "Thanks for sharing that with me. Tell me more! 💬"
+        else:
+            if "positive" in user_sentiment:
+                assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
+            elif "negative" in user_sentiment:
+                assistant_response = "I am so sorry to hear that. I'm here if you want to vent or talk through it. ❤️"
+            else:
+                assistant_response = "Thanks for sharing that with me. Tell me more! 💬"
 
     # Display the sentiment and emotion badges directly under the user's message
     st.caption(
@@ -124,28 +168,6 @@ if prompt := st.chat_input("What is up?"):
     st.session_state.messages.append(
         {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion}
     )
-
-    # Generate adaptive bot response: real LLM reply if a token is available, canned fallback otherwise
-    if active_token:
-        try:
-            assistant_response = get_llm_response(
-                prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
-            )
-        except Exception:
-            st.error("Couldn't reach the model — check that your token is valid, or try again in a moment.")
-            if "positive" in user_sentiment:
-                assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
-            elif "negative" in user_sentiment:
-                assistant_response = "I am so sorry to hear that. I'm here if you want to vent or talk through it. ❤️"
-            else:
-                assistant_response = "Thanks for sharing that with me. Tell me more! 💬"
-    else:
-        if "positive" in user_sentiment:
-            assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
-        elif "negative" in user_sentiment:
-            assistant_response = "I am so sorry to hear that. I'm here if you want to vent or talk through it. ❤️"
-        else:
-            assistant_response = "Thanks for sharing that with me. Tell me more! 💬"
 
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
