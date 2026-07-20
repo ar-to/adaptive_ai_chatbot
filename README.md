@@ -66,3 +66,17 @@ Get a free token at https://huggingface.co/settings/tokens.
 
 For local testing, `.env` and `.streamlit/secrets.toml` are gitignored, so either is a safe
 place to stash your own `HF_TOKEN` without risking a commit.
+
+Note: the app reads `HF_TOKEN` via `os.environ`, and a plain `.env` file is **not**
+auto-loaded (no `python-dotenv` dependency). To use one locally, source it into your shell
+before running the app:
+
+```bash
+# chatbot_ai_v2/.env
+HF_TOKEN=hf_your_real_token_here
+```
+
+```bash
+set -a; source .env; set +a
+streamlit run src/streamlit_app.py
+```

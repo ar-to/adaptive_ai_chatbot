@@ -14,9 +14,26 @@ def load_sentiment_pipeline():
   # Using a robust, standard model for positive/negative/neutral tracking
   return pipeline("text-classification", model="cardiffnlp/twitter-roberta-base-sentiment-latest")
 
-analyzer = load_sentiment_pipeline()
+# Initialize the emotion classification model (cached to prevent reloading every rerun)
+@st.cache_resource
+def load_emotion_pipeline():
+  # Fine-grained emotions (joy, sadness, anger, fear, surprise, disgust, neutral)
+  return pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
 
-def get_llm_response(prompt, history, sentiment, token):
+analyzer = load_sentiment_pipeline()
+emotion_analyzer = load_emotion_pipeline()
+
+def predict_sentiment(prompt):
+    """Run sentiment inference, returning (label, confidence)."""
+    result = analyzer(prompt)[0]
+    return result["label"].lower(), result["score"]  # 'positive', 'negative', or 'neutral'
+
+def predict_emotion(prompt):
+    """Run emotion inference, returning (label, confidence)."""
+    result = emotion_analyzer(prompt)[0]
+    return result["label"].lower(), result["score"]  # e.g. 'joy', 'anger', 'sadness', 'fear'...
+
+def get_llm_response(prompt, history, sentiment, emotion, token):
     """Call the Hugging Face Inference API using the caller's own token."""
     client = InferenceClient(model=DEFAULT_HF_MODEL, token=token)
 
@@ -24,8 +41,8 @@ def get_llm_response(prompt, history, sentiment, token):
         "role": "system",
         "content": (
             "You are a warm, supportive chatbot. The user's latest message was "
-            f"detected as having {sentiment} sentiment, so respond with appropriate "
-            "tone and empathy."
+            f"detected as having {sentiment} sentiment and {emotion} emotion, so "
+            "respond with appropriate tone and empathy."
         ),
     }
     recent_history = [
@@ -75,21 +92,28 @@ if prompt := st.chat_input("What is up?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Run real-time sentiment analysis via Hugging Face
-    analysis_result = analyzer(prompt)[0]
-    user_sentiment = analysis_result["label"].lower() # returns 'positive', 'negative', or 'neutral'
+    # Run real-time sentiment and emotion analysis via Hugging Face
+    user_sentiment, sentiment_score = predict_sentiment(prompt)
+    user_emotion, emotion_score = predict_emotion(prompt)
 
-    # Display the sentiment badge directly under the user's message
-    st.caption(f" Detected Sentiment: {user_sentiment.upper()} (Confidence: {analysis_result['score']:.2f})")
+    # Display the sentiment and emotion badges directly under the user's message
+    st.caption(
+        f" Detected Sentiment: {user_sentiment.upper()} (Confidence: {sentiment_score:.2f}) · "
+        f"Emotion: {user_emotion.upper()} (Confidence: {emotion_score:.2f})"
+    )
 
-    # Add user message to chat history with sentiment
-    # Store the sentiment in the session state for potential future use
-    st.session_state.messages.append({"role": "user", "content": prompt, "sentiment": user_sentiment})
+    # Add user message to chat history with sentiment and emotion
+    # Store both in the session state for potential future use
+    st.session_state.messages.append(
+        {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion}
+    )
 
     # Generate adaptive bot response: real LLM reply if a token is available, canned fallback otherwise
     if active_token:
         try:
-            assistant_response = get_llm_response(prompt, st.session_state.messages, user_sentiment, active_token)
+            assistant_response = get_llm_response(
+                prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
+            )
         except Exception:
             st.error("Couldn't reach the model — check that your token is valid, or try again in a moment.")
             if "positive" in user_sentiment:
