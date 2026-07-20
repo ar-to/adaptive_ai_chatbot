@@ -50,3 +50,19 @@ then just run `activate chatbot_ai_v2`.
 
 Deploying to the Space is unaffected by any of this — Hugging Face builds the `Dockerfile`,
 which installs from `requirements.txt` directly on its own (Linux) infrastructure.
+
+# Enabling real AI replies
+
+By default this Space has no `HF_TOKEN` configured, so it runs on free local sentiment
+analysis plus canned empathetic replies — $0 cost to the maintainer. To get real
+LLM-generated replies:
+
+- **Paste your own token**: enter a Hugging Face token in the sidebar. It's used for your
+  session only and is never stored.
+- **Or duplicate the Space**: click "Duplicate this Space," make your copy private, and add
+  `HF_TOKEN` under Settings → Variables and secrets so it's always on.
+
+Get a free token at https://huggingface.co/settings/tokens.
+
+For local testing, `.env` and `.streamlit/secrets.toml` are gitignored, so either is a safe
+place to stash your own `HF_TOKEN` without risking a commit.
