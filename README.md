@@ -1,5 +1,5 @@
 ---
-title: Chatbot AI
+title: Chatbot AI v2
 emoji: 🚀
 colorFrom: red
 colorTo: red
@@ -20,10 +20,33 @@ forums](https://discuss.streamlit.io).
 
 # Returning
 
+The venv for this project lives *outside* the repo, at `~/.venvs/chatbot_ai_v2` — this
+keeps the local folder free of large `site-packages`/metadata to clean up. It's pinned to
+**Python 3.8** because `torch` dropped Intel-Mac wheels after `2.2.2`, and 3.8 is the last
+interpreter pip can still resolve that version for automatically.
+
 ```bash
-cd chatbot_ai
-python -m venv .venv 
-source .venv/bin/activate
+cd chatbot_ai_v2
+
+# one-time only, if ~/.venvs/chatbot_ai_v2 doesn't exist yet
+python3.8 -m venv ~/.venvs/chatbot_ai_v2
+
+# every time you return: activate the venv
+source ~/.venvs/chatbot_ai_v2/bin/activate
+
+# one-time per venv: install deps (pip resolves torch==2.2.2 + transformers==4.46.3
+# automatically on Python 3.8 / Intel Mac — no manual pinning needed)
 pip install -r requirements.txt
-streamlit run src/streamlit_app.py 
+
+# run the app
+streamlit run src/streamlit_app.py
 ```
+
+Tip: add this to `~/.zshrc` to activate with one word instead of the full path:
+```bash
+activate() { source ~/.venvs/"$1"/bin/activate; }
+```
+then just run `activate chatbot_ai_v2`.
+
+Deploying to the Space is unaffected by any of this — Hugging Face builds the `Dockerfile`,
+which installs from `requirements.txt` directly on its own (Linux) infrastructure.
