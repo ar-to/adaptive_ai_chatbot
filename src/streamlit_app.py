@@ -75,7 +75,7 @@ def get_llm_response(prompt, history, sentiment, emotion, token):
 
 st.title("🤖 Sentiment-Aware Chatbot")
 
-st.caption("Free by default with local sentiment analysis. Add a Hugging Face token below for real AI replies.")
+st.caption("Free by default with local sentiment analysis. Add a Hugging Face token below for real AI replies using an LLM.")
 
 # Resolve the active HF token: prefer a Space secret (env var) over a pasted one.
 env_token = os.environ.get("HF_TOKEN")
