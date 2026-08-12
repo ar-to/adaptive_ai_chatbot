@@ -1,6 +1,7 @@
 from transformers import pipeline
 from huggingface_hub import InferenceClient
 import streamlit as st
+import traceback
 import os
 import random
 import time
@@ -127,6 +128,8 @@ if prompt := st.chat_input("What is up?"):
                     prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
                 )
             except Exception:
+                # print actual error to console for debugging, but show a user-friendly message in the UI
+                traceback.print_exc()
                 st.error("Couldn't reach the model — check that your token is valid, or try again in a moment.")
                 if "positive" in user_sentiment:
                     assistant_response = "That sounds amazing! I'm incredibly happy to hear that. 🎉"
