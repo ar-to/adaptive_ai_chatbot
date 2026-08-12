@@ -92,6 +92,9 @@ else:
         "Paste a token to enable real AI replies for this session only (never stored). "
         "Or click 'Duplicate this Space', make it private, and add HF_TOKEN as a secret."
     )
+    # intentional to keep UI about open but still show user a success
+    if st.session_state.get("user_hf_token"):
+        st.sidebar.success("AI replies enabled")
 active_token = env_token or st.session_state.get("user_hf_token")
 
 # Initialize chat history
