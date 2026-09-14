@@ -1,10 +1,10 @@
 # GitHub → Hugging Face Sync
 
 Pushes to `main` on GitHub ([sync-to-hub.yml](../.github/workflows/sync-to-hub.yml)) are
-mirrored to the HF Space (`aricode00x/chatbot_ai_v2`) automatically, so GitHub can be the
+mirrored to the HF Space (`aricode00x/adaptive_ai_chatbot`) automatically, so GitHub can be the
 repo you actually push to day-to-day instead of the `hf` remote.
 
-This is a **git-to-git push** (`git push https://aricode00x:$HF_TOKEN@huggingface.co/spaces/aricode00x/chatbot_ai_v2 main`),
+This is a **git-to-git push** (`git push https://aricode00x:$HF_TOKEN@huggingface.co/spaces/aricode00x/adaptive_ai_chatbot main`),
 not Hugging Face's `hub-sync` action — the whole commit history and object store go over,
 not just a snapshot of file contents.
 
@@ -14,7 +14,7 @@ The workflow needs write access to the Space, via a GitHub Actions secret:
 
 1. Create an HF access token at https://huggingface.co/settings/tokens with **write** access.
 2. Add it as a repo secret named `HF_TOKEN`, at
-   `github.com/ar-to/chatbot_ai_v2/settings/secrets/actions` → "New repository secret".
+   `github.com/ar-to/adaptive_ai_chatbot/settings/secrets/actions` → "New repository secret".
    (`gh` isn't installed locally; if you install and auth it, `gh secret set HF_TOKEN` works
    too.)
 

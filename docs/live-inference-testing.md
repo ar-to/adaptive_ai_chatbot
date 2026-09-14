@@ -51,7 +51,7 @@ emotion_analyzer = load_emotion_pipeline()
 ## Running locally
 
 ```bash
-cd chatbot_ai_v2
+cd adaptive_ai_chatbot
 pip install -r requirements-test.txt
 pytest -v
 ```

@@ -15,4 +15,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://aricode00x:$HF_TOKEN@huggingface.co/spaces/aricode00x/chatbot_ai_v2 main
+        run: git push https://aricode00x:$HF_TOKEN@huggingface.co/spaces/aricode00x/adaptive_ai_chatbot main

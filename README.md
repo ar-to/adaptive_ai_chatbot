@@ -1,5 +1,5 @@
 ---
-title: Chatbot AI v2
+title: Adaptive AI Chatbot
 emoji: 🚀
 colorFrom: red
 colorTo: red
@@ -20,19 +20,19 @@ forums](https://discuss.streamlit.io).
 
 # Returning
 
-The venv for this project lives *outside* the repo, at `~/.venvs/chatbot_ai_v2` — this
+The venv for this project lives *outside* the repo, at `~/.venvs/adaptive_ai_chatbot` — this
 keeps the local folder free of large `site-packages`/metadata to clean up. It's pinned to
 **Python 3.8** because `torch` dropped Intel-Mac wheels after `2.2.2`, and 3.8 is the last
 interpreter pip can still resolve that version for automatically.
 
 ```bash
-cd chatbot_ai_v2
+cd adaptive_ai_chatbot
 
-# one-time only, if ~/.venvs/chatbot_ai_v2 doesn't exist yet
-python3.8 -m venv ~/.venvs/chatbot_ai_v2
+# one-time only, if ~/.venvs/adaptive_ai_chatbot doesn't exist yet
+python3.8 -m venv ~/.venvs/adaptive_ai_chatbot
 
 # every time you return: activate the venv
-source ~/.venvs/chatbot_ai_v2/bin/activate
+source ~/.venvs/adaptive_ai_chatbot/bin/activate
 
 # one-time per venv: install deps (pip resolves torch==2.2.2 + transformers==4.46.3
 # automatically on Python 3.8 / Intel Mac — no manual pinning needed)
@@ -46,7 +46,7 @@ Tip: add this to `~/.zshrc` to activate with one word instead of the full path:
 ```bash
 activate() { source ~/.venvs/"$1"/bin/activate; }
 ```
-then just run `activate chatbot_ai_v2`.
+then just run `activate adaptive_ai_chatbot`.
 
 Deploying to the Space is unaffected by any of this — Hugging Face builds the `Dockerfile`,
 which installs from `requirements.txt` directly on its own (Linux) infrastructure.
@@ -72,7 +72,7 @@ auto-loaded (no `python-dotenv` dependency). To use one locally, source it into 
 before running the app:
 
 ```bash
-# chatbot_ai_v2/.env
+# adaptive_ai_chatbot/.env
 HF_TOKEN=hf_your_real_token_here
 ```
 

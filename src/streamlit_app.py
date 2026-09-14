@@ -11,7 +11,7 @@ import time
 DEFAULT_HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 
 # Pinned local transformers models, referenced by both the app and its tests
-# (see chatbot_ai_v2/docs/live-inference-testing.md).
+# (see adaptive_ai_chatbot/docs/live-inference-testing.md).
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 EMOTION_MODEL = "j-hartmann/emotion-english-distilroberta-base"
 
@@ -81,7 +81,7 @@ def get_llm_response(prompt, history, sentiment, emotion, token):
 # UI/interactive code only runs under `streamlit run` (which executes this file
 # with __name__ == "__main__"), not on a plain `import streamlit_app` — this lets
 # tests import the module for its pipelines/functions without touching Streamlit's
-# widget APIs. See chatbot_ai_v2/docs/live-inference-testing.md.
+# widget APIs. See adaptive_ai_chatbot/docs/live-inference-testing.md.
 if __name__ == "__main__":
     st.title("🤖 Sentiment-Aware Chatbot")
 
