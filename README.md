@@ -1,8 +1,8 @@
 ---
 title: Adaptive AI Chatbot
 emoji: 🚀
-colorFrom: red
-colorTo: red
+colorFrom: blue
+colorTo: blue
 sdk: docker
 app_port: 8501
 tags:
