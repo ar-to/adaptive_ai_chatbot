@@ -1,6 +1,8 @@
 from transformers import pipeline
 from huggingface_hub import InferenceClient
 import streamlit as st
+import altair as alt
+import pandas as pd
 import traceback
 import colorsys
 import os
@@ -459,6 +461,10 @@ if __name__ == "__main__":
     # run when a preset was just clicked, to avoid a race between the two inputs.
     typed_prompt = st.chat_input("What is up?", disabled=preset_prompt is not None)
     if prompt := (preset_prompt or typed_prompt):
+        # Sequential exchange number, shared by this turn's user and assistant message,
+        # so the sidebar analytics charts can align feedback and trait values on one x-axis.
+        turn_number = st.session_state.get("turn_counter", 0) + 1
+        st.session_state.turn_counter = turn_number
 
         # Display user message in chat message container
         with st.chat_message("user"):
@@ -559,10 +565,16 @@ if __name__ == "__main__":
         st.session_state.theme = theme
         st.markdown(build_css(theme), unsafe_allow_html=True)
 
-        # Add user message to chat history with sentiment, emotion, domain, and the
-        # resulting adaptive color. Store all in the session state for potential future use
+        # Add user message to chat history with sentiment, emotion, domain, the resulting
+        # adaptive color, the turn number, and a snapshot of the (already 0-1 normalized)
+        # trait sliders — needed so the sidebar trait-trend chart reflects each turn's
+        # actual settings rather than only the current slider position.
         st.session_state.messages.append(
-            {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion, "domain": selected_domain, "color": theme["background"]}
+            {
+                "role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion,
+                "domain": selected_domain, "color": theme["background"], "turn": turn_number,
+                "psychological": slider_psych, "philosophical": slider_philo,
+            }
         )
 
         # Whether this reply came from the LLM (system_prompt_used is set only on a
@@ -595,6 +607,7 @@ if __name__ == "__main__":
             "content": full_response,
             "llm_generated": llm_generated,
             "feedback": ("up" if feedback_rating == 1 else "down") if feedback_rating is not None else None,
+            "turn": turn_number,
         })
 
         # Rendered after the rerun below (see EMOJI subheader further down) so it
@@ -639,3 +652,71 @@ if __name__ == "__main__":
             unsafe_allow_html=True,
         )
     # EMOTION HUE LEGEND END
+
+    # SESSION ANALYTICS
+    # Two single-axis charts sharing a turn-number x-axis, rather than one dual-axis
+    # chart — feedback (+1/-1) and normalized trait weights (0-1) are different-scale
+    # measures, and faking a shared scale with two y-axes is a common charting mistake.
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📈 Session Analytics")
+
+    feedback_rows = [
+        {
+            "turn": m["turn"],
+            "rating": 1 if m["feedback"] == "up" else -1,
+            "label": "👍 Up" if m["feedback"] == "up" else "👎 Down",
+        }
+        for m in st.session_state.messages
+        if m.get("role") == "assistant" and m.get("feedback")
+    ]
+    trait_rows = [
+        {"turn": m["turn"], "trait": "Psychological", "value": m["psychological"]}
+        for m in st.session_state.messages if m.get("role") == "user" and "psychological" in m
+    ] + [
+        {"turn": m["turn"], "trait": "Philosophical", "value": m["philosophical"]}
+        for m in st.session_state.messages if m.get("role") == "user" and "philosophical" in m
+    ]
+
+    if feedback_rows:
+        feedback_df = pd.DataFrame(feedback_rows)
+        show_moving_avg = st.sidebar.checkbox(
+            "Show feedback moving average", value=False,
+            help="Overlay a 3-turn rolling average of feedback (+1 up / -1 down) to smooth out noise."
+        )
+        base = alt.Chart(feedback_df).encode(
+            x=alt.X("turn:Q", title="Response #", axis=alt.Axis(tickMinStep=1))
+        )
+        feedback_chart = base.mark_point(size=80, filled=True).encode(
+            y=alt.Y("rating:Q", title="Feedback", scale=alt.Scale(domain=[-1.5, 1.5])),
+            color=alt.Color(
+                "label:N", title="Feedback",
+                scale=alt.Scale(domain=["👍 Up", "👎 Down"], range=["#22c55e", "#ef4444"]),
+            ),
+            tooltip=["turn", "label"],
+        )
+        if show_moving_avg:
+            ma_line = base.transform_window(
+                sort=[{"field": "turn"}], moving_avg="mean(rating)", frame=[-2, 0]
+            ).mark_line(color="#6b7280", strokeDash=[4, 3]).encode(
+                y=alt.Y("moving_avg:Q"),
+            )
+            feedback_chart = feedback_chart + ma_line
+        st.sidebar.altair_chart(feedback_chart.properties(height=180), use_container_width=True)
+    else:
+        st.sidebar.caption("No thumbs feedback given yet — rate an LLM reply to see the feedback trend here.")
+
+    if trait_rows:
+        trait_df = pd.DataFrame(trait_rows)
+        trait_chart = alt.Chart(trait_df).mark_line(point=True).encode(
+            x=alt.X("turn:Q", title="Response #", axis=alt.Axis(tickMinStep=1)),
+            y=alt.Y("value:Q", title="Trait weight", scale=alt.Scale(domain=[0, 1])),
+            color=alt.Color(
+                "trait:N", title="Trait",
+                scale=alt.Scale(domain=["Psychological", "Philosophical"], range=["#3b82f6", "#f59e0b"]),
+            ),
+            tooltip=["turn", "trait", "value"],
+        ).properties(height=180)
+        st.sidebar.altair_chart(trait_chart, use_container_width=True)
+    else:
+        st.sidebar.caption("No trait data yet — send a message to start tracking trait weights per turn.")
+    # SESSION ANALYTICS END
