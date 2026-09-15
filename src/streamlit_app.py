@@ -32,6 +32,7 @@ EMOTION_HUES = {
     "neutral": 0,    # Desaturated Slate Gray
 }
 
+# DOMAINS
 # 2. Domain Knowledge Matrices
 DOMAIN_MODIFIERS = {
     "medical": {
@@ -50,7 +51,7 @@ DOMAIN_MODIFIERS = {
         "hue_shift": {}
     }
 }
-
+# DOMAINS END
 
 def generate_adaptive_palette(user_sentiment, emotion_breakdown, active_domain="general", trait_sliders=None):
     """
@@ -276,6 +277,48 @@ def get_llm_response(prompt, history, sentiment, emotion, token):
     )
     return response.choices[0].message.content
 
+def get_adaptive_llm_response(prompt, history, sentiment, emotion, token, active_domain="general", trait_sliders=None):
+    """
+    Leverages a decoder LLM as a generative neurosymbolic layer, passing 
+    deterministically extracted traits as a structured prompt framework.
+    """
+    if trait_sliders is None:
+        trait_sliders = {"psychological": 1.0, "philosophical": 0.0, "support_ambiguity": False}
+
+    client = InferenceClient(model=DEFAULT_HF_MODEL, token=token)
+    
+    # 1. Establish Domain-Bound Tone Context
+    domain_guidelines = {
+        "medical": "Keep language clinically calm, reassuring, simple, and supportive. Avoid loud vocabulary.",
+        "marketing": "Maintain a persuasive, high-energy, actionable tone. Leverage urgency where appropriate.",
+        "general": "Act as a warm, standard conversational assistant."
+    }
+    active_guideline = domain_guidelines.get(active_domain, domain_guidelines["general"])
+    
+    # 2. Compile the Symbolic System Instruction
+    system_content = (
+        f"You are an adaptive user companion running inside a {active_domain.upper()} interface. "
+        f"The user's latest text input was evaluated to have a macro-sentiment of {sentiment.upper()} "
+        f"and fine-grained emotion features pointing to {emotion.upper()}.\n\n"
+        f"CRITICAL TONE CONSTRAINTS:\n"
+        f"- {active_guideline}\n"
+        f"- Psychological Emphasis: {trait_sliders.get('psychological', 0.5):.2f} weight.\n"
+        f"- Philosophical Reflection: {trait_sliders.get('philosophical', 0.2):.2f} weight.\n\n"
+        f"Adapt your natural language generation to closely match these profile coordinates."
+    )
+    
+    messages = [{"role": "system", "content": system_content}]
+    
+    # Extract conversational context history slices
+    recent_history = [{"role": m["role"], "content": m["content"]} for m in history[-6:]]
+    messages.extend(recent_history)
+    messages.append({"role": "user", "content": prompt})
+    
+    # 3. Neural Generative Synthesis under Symbolic Guardrails
+    response = client.chat_completion(messages=messages, max_tokens=200)
+    return response.choices[0].message.content
+
+
 # UI/interactive code only runs under `streamlit run` (which executes this file
 # with __name__ == "__main__"), not on a plain `import streamlit_app` — this lets
 # tests import the module for its pipelines/functions without touching Streamlit's
@@ -311,6 +354,11 @@ if __name__ == "__main__":
             st.sidebar.success("AI replies enabled")
     active_token = env_token or st.session_state.get("user_hf_token")
 
+    if active_token:
+        st.caption("🔑 Using Hugging Face token for LLM personalized replies.")
+    else:
+        st.caption("🧩 Using local sentiment/emotion models only — LLM replies disabled.")
+
     # Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "Let's start chatting! 👇"}]
@@ -319,20 +367,36 @@ if __name__ == "__main__":
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            if message.get("domain"):
+                st.caption(f"🧭 Domain: {message['domain'].title()}")
+            if message.get("color"):
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:6px;font-size:0.8rem;opacity:0.75;'>"
+                    f"<span style='width:12px;height:12px;border-radius:50%;background:{message['color']};"
+                    f"border:1px solid rgba(0,0,0,0.25);flex-shrink:0;'></span>"
+                    f"<span>Adaptive color: {message['color']}</span></div>",
+                    unsafe_allow_html=True,
+                )
 
     # DOMAINS & SLIDERS
     # Sidebar Controller for Trait Profiles & Domain Settings
     st.sidebar.header("🎛️ Neurosymbolic Adaptivity Controls")
     selected_domain = st.sidebar.selectbox("Active Interface Domain", ["general", "medical", "marketing"])
-    
+
+    st.sidebar.subheader("🧬 Traits")
     slider_psych = st.sidebar.slider("Psychological Focus Weight", 0.0, 1.0, 0.7)
     slider_philo = st.sidebar.slider(
         "Philosophical Reflection Weight", 0.0, 1.0, 0.2,
         help="Higher philosophical trait = cooler, deeper saturation tones"
     )
+    st.sidebar.subheader("🔀 Toggles")
     support_ambiguity_toggle = st.sidebar.checkbox(
         "Support Ambiguity Handling", value=False,
         help="Enable handling of ambiguous emotions. Skew mixed-emotion hues towards the sentiment's expected color spectrum. e.g. positive -> warm yellows/greens, negative -> deep blues/muted plums"
+    )
+    support_adaptive_response_toggle = st.sidebar.checkbox(
+        "Adaptive Response Generation", value=True,
+        help="On: LLM replies are shaped by the domain and trait-slider settings above. Off: LLM replies use the plain sentiment/emotion-aware prompt. Try changing the domain to see how the same input can yield different tones and word choices."
     )
 
     runtime_traits = {"psychological": slider_psych, "philosophical": slider_philo, "support_ambiguity": support_ambiguity_toggle}
@@ -386,6 +450,7 @@ if __name__ == "__main__":
         # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(prompt)
+            st.caption(f"🧭 Domain: {selected_domain.title()}")
 
         # Block on a spinner while analysis + response generation run, so the user
         # can't fire off a second prompt mid-flight and race the chat history.
@@ -403,9 +468,16 @@ if __name__ == "__main__":
             # Generate adaptive bot response: real LLM reply if a token is available, canned fallback otherwise
             if active_token:
                 try:
-                    assistant_response = get_llm_response(
-                        prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
-                    )
+                    if support_adaptive_response_toggle:
+                        assistant_response = get_adaptive_llm_response(
+                            prompt, st.session_state.messages, user_sentiment, user_emotion, active_token,
+                            active_domain=selected_domain,          # Sets domain constraints
+                            trait_sliders=runtime_traits           # Modulates runtime scaling weights
+                        )
+                    else:
+                        assistant_response = get_llm_response(
+                            prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
+                        )
                 except Exception:
                     # print actual error to console for debugging, but show a user-friendly message in the UI
                     traceback.print_exc()
@@ -445,10 +517,32 @@ if __name__ == "__main__":
                 use_container_width=True,
             )
 
-        # Add user message to chat history with sentiment and emotion
-        # Store both in the session state for potential future use
+        # FAST RUNTIME ADAPTATION LAYER
+        # Pass both sentiment and emotion to the neurosymbolic layout matrix.
+        # Preset recommendations skip this entirely — their color is pre-determined.
+        # Computed here (before the message is stored) so the resulting color can be
+        # saved onto the message alongside domain, the same way sentiment/emotion are.
+        if preset_theme_choice:
+            theme = build_preset_theme(preset_theme_choice)
+        else:
+            theme = generate_adaptive_palette(
+                user_sentiment=user_sentiment,            # Controls macro contrast/bounds
+                emotion_breakdown=emotion_breakdown,      # Controls micro hue calculations
+                active_domain=selected_domain,            # Sets domain constraints
+                trait_sliders=runtime_traits            # Modulates runtime scaling weights
+            )
+
+        # print(f"DEBUG: Generated theme: {theme} for sentiment={user_sentiment}, emotion={user_emotion}, domain={selected_domain}, traits={runtime_traits}")
+
+        # Apply calculated style modifications immediately, and remember it so the
+        # reapply-on-every-run block above can restore it on subsequent reruns.
+        st.session_state.theme = theme
+        st.markdown(build_css(theme), unsafe_allow_html=True)
+
+        # Add user message to chat history with sentiment, emotion, domain, and the
+        # resulting adaptive color. Store all in the session state for potential future use
         st.session_state.messages.append(
-            {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion}
+            {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion, "domain": selected_domain, "color": theme["background"]}
         )
 
         # Display assistant response in chat message container
@@ -470,26 +564,6 @@ if __name__ == "__main__":
         # survives the extra rerun triggered for presets, instead of flashing away.
         st.session_state.last_sentiment = user_sentiment if prompt.strip() else None
 
-        # FAST RUNTIME ADAPTATION LAYER
-        # Pass both sentiment and emotion to the neurosymbolic layout matrix.
-        # Preset recommendations skip this entirely — their color is pre-determined.
-        if preset_theme_choice:
-            theme = build_preset_theme(preset_theme_choice)
-        else:
-            theme = generate_adaptive_palette(
-                user_sentiment=user_sentiment,            # Controls macro contrast/bounds
-                emotion_breakdown=emotion_breakdown,      # Controls micro hue calculations
-                active_domain=selected_domain,            # Sets domain constraints
-                trait_sliders=runtime_traits            # Modulates runtime scaling weights
-            )
-
-        # print(f"DEBUG: Generated theme: {theme} for sentiment={user_sentiment}, emotion={user_emotion}, domain={selected_domain}, traits={runtime_traits}")
-
-        # Apply calculated style modifications immediately, and remember it so the
-        # reapply-on-every-run block above can restore it on subsequent reruns.
-        st.session_state.theme = theme
-        st.markdown(build_css(theme), unsafe_allow_html=True)
-
         # The chat input was rendered disabled=True this run (see above) to stop it
         # racing the preset button. Rerun once now that the response is fully in
         # session_state, so the next render re-enables it — the theme reapply block
@@ -505,7 +579,7 @@ if __name__ == "__main__":
     else:
         st.caption("Waiting for input to analyze sentiment…")
 
-    st.caption("POC note: sentiment detection uses simple keyword matching — swap in a fine-tuned model for production.")
+    st.caption("POC note: history is based on last 6 messages only.")
 
     # EMOTION HUE LEGEND
     # Live reference of each emotion's base hue, with the most recently detected
