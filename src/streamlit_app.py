@@ -256,17 +256,19 @@ def predict_emotion(prompt):
     return top["label"].lower(), top["score"], breakdown  # e.g. 'joy', 'anger', 'sadness', 'fear'...
 
 def get_llm_response(prompt, history, sentiment, emotion, token):
-    """Call the Hugging Face Inference API using the caller's own token."""
+    """Call the Hugging Face Inference API using the caller's own token.
+
+    Returns (response_text, system_prompt) so callers can surface the exact
+    system prompt that shaped the reply (e.g. in a UI debug panel).
+    """
     client = InferenceClient(model=DEFAULT_HF_MODEL, token=token)
 
-    system_message = {
-        "role": "system",
-        "content": (
-            "You are a warm, supportive chatbot. The user's latest message was "
-            f"detected as having {sentiment} sentiment and {emotion} emotion, so "
-            "respond with appropriate tone and empathy."
-        ),
-    }
+    system_content = (
+        "You are a warm, supportive chatbot. The user's latest message was "
+        f"detected as having {sentiment} sentiment and {emotion} emotion, so "
+        "respond with appropriate tone and empathy."
+    )
+    system_message = {"role": "system", "content": system_content}
     recent_history = [
         {"role": m["role"], "content": m["content"]} for m in history[-6:]
     ]
@@ -275,12 +277,15 @@ def get_llm_response(prompt, history, sentiment, emotion, token):
         messages=[system_message] + recent_history + [{"role": "user", "content": prompt}],
         max_tokens=200,
     )
-    return response.choices[0].message.content
+    return response.choices[0].message.content, system_content
 
 def get_adaptive_llm_response(prompt, history, sentiment, emotion, token, active_domain="general", trait_sliders=None):
     """
-    Leverages a decoder LLM as a generative neurosymbolic layer, passing 
+    Leverages a decoder LLM as a generative neurosymbolic layer, passing
     deterministically extracted traits as a structured prompt framework.
+
+    Returns (response_text, system_prompt) so callers can surface the exact
+    system prompt that shaped the reply (e.g. in a UI debug panel).
     """
     if trait_sliders is None:
         trait_sliders = {"psychological": 1.0, "philosophical": 0.0, "support_ambiguity": False}
@@ -316,7 +321,7 @@ def get_adaptive_llm_response(prompt, history, sentiment, emotion, token, active
     
     # 3. Neural Generative Synthesis under Symbolic Guardrails
     response = client.chat_completion(messages=messages, max_tokens=200)
-    return response.choices[0].message.content
+    return response.choices[0].message.content, system_content
 
 
 # UI/interactive code only runs under `streamlit run` (which executes this file
@@ -377,6 +382,8 @@ if __name__ == "__main__":
                     f"<span>Adaptive color: {message['color']}</span></div>",
                     unsafe_allow_html=True,
                 )
+            if "llm_generated" in message:
+                st.caption("🤖 LLM-generated" if message["llm_generated"] else "📐 System deterministic")
 
     # DOMAINS & SLIDERS
     # Sidebar Controller for Trait Profiles & Domain Settings
@@ -466,16 +473,18 @@ if __name__ == "__main__":
             st.session_state.last_emotion = user_emotion.lower()
 
             # Generate adaptive bot response: real LLM reply if a token is available, canned fallback otherwise
+            # system_prompt_used stays None for canned replies, which skip the LLM entirely.
+            system_prompt_used = None
             if active_token:
                 try:
                     if support_adaptive_response_toggle:
-                        assistant_response = get_adaptive_llm_response(
+                        assistant_response, system_prompt_used = get_adaptive_llm_response(
                             prompt, st.session_state.messages, user_sentiment, user_emotion, active_token,
                             active_domain=selected_domain,          # Sets domain constraints
                             trait_sliders=runtime_traits           # Modulates runtime scaling weights
                         )
                     else:
-                        assistant_response = get_llm_response(
+                        assistant_response, system_prompt_used = get_llm_response(
                             prompt, st.session_state.messages, user_sentiment, user_emotion, active_token
                         )
                 except Exception:
@@ -516,6 +525,11 @@ if __name__ == "__main__":
                 hide_index=True,
                 use_container_width=True,
             )
+            st.markdown("**LLM system prompt**")
+            if system_prompt_used:
+                st.code(system_prompt_used, language=None)
+            else:
+                st.caption("No LLM call was made for this message (no token, or a canned fallback reply was used).")
 
         # FAST RUNTIME ADAPTATION LAYER
         # Pass both sentiment and emotion to the neurosymbolic layout matrix.
@@ -545,6 +559,10 @@ if __name__ == "__main__":
             {"role": "user", "content": prompt, "sentiment": user_sentiment, "emotion": user_emotion, "domain": selected_domain, "color": theme["background"]}
         )
 
+        # Whether this reply came from the LLM (system_prompt_used is set only on a
+        # successful LLM call) vs. the deterministic sentiment-keyed canned replies.
+        llm_generated = system_prompt_used is not None
+
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
@@ -557,8 +575,10 @@ if __name__ == "__main__":
                 # Add a blinking cursor to simulate typing
                 message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.caption("🤖 LLM-generated" if llm_generated else "📐 System deterministic")
+        # Add assistant response to chat history, with the same llm_generated flag
+        # so history replay can show whether it was LLM-generated or deterministic.
+        st.session_state.messages.append({"role": "assistant", "content": full_response, "llm_generated": llm_generated})
 
         # Rendered after the rerun below (see EMOJI subheader further down) so it
         # survives the extra rerun triggered for presets, instead of flashing away.
