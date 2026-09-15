@@ -369,7 +369,7 @@ if __name__ == "__main__":
         st.session_state.messages = [{"role": "assistant", "content": "Let's start chatting! 👇"}]
 
     # Display chat messages from history on app rerun
-    for message in st.session_state.messages:
+    for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message.get("domain"):
@@ -384,6 +384,12 @@ if __name__ == "__main__":
                 )
             if "llm_generated" in message:
                 st.caption("🤖 LLM-generated" if message["llm_generated"] else "📐 System deterministic")
+            # Thumbs feedback only makes sense for real LLM replies — collected for
+            # rating-scale bias / data-collection analysis, not shown for canned replies.
+            if message.get("llm_generated"):
+                rating = st.feedback("thumbs", key=f"feedback_{idx}")
+                if rating is not None:
+                    message["feedback"] = "up" if rating == 1 else "down"
 
     # DOMAINS & SLIDERS
     # Sidebar Controller for Trait Profiles & Domain Settings
@@ -562,6 +568,9 @@ if __name__ == "__main__":
         # Whether this reply came from the LLM (system_prompt_used is set only on a
         # successful LLM call) vs. the deterministic sentiment-keyed canned replies.
         llm_generated = system_prompt_used is not None
+        # Index this message will land at once appended below — used as a stable
+        # widget key so the thumbs rating persists across reruns (see history loop above).
+        assistant_idx = len(st.session_state.messages)
 
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
@@ -576,9 +585,17 @@ if __name__ == "__main__":
                 message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
             st.caption("🤖 LLM-generated" if llm_generated else "📐 System deterministic")
-        # Add assistant response to chat history, with the same llm_generated flag
-        # so history replay can show whether it was LLM-generated or deterministic.
-        st.session_state.messages.append({"role": "assistant", "content": full_response, "llm_generated": llm_generated})
+            feedback_rating = None
+            if llm_generated:
+                feedback_rating = st.feedback("thumbs", key=f"feedback_{assistant_idx}")
+        # Add assistant response to chat history, with the same llm_generated flag and
+        # any thumbs rating already given, so history replay stays in sync (data-collection).
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": full_response,
+            "llm_generated": llm_generated,
+            "feedback": ("up" if feedback_rating == 1 else "down") if feedback_rating is not None else None,
+        })
 
         # Rendered after the rerun below (see EMOJI subheader further down) so it
         # survives the extra rerun triggered for presets, instead of flashing away.
@@ -599,7 +616,7 @@ if __name__ == "__main__":
     else:
         st.caption("Waiting for input to analyze sentiment…")
 
-    st.caption("POC note: history is based on last 6 messages only.")
+    st.caption("POC note: history is based on last 6 messages only. It includes both user and assistant messages, so the LLM sees a full context of the conversation. The LLM is not trained on your data, and no messages are stored outside this session. It also includes the detected sentiment and emotion for each message, domain, and the resulting adaptive color as well as any thumbs feedback you provide. This is for research purposes only and is not shared with any third party.")
 
     # EMOTION HUE LEGEND
     # Live reference of each emotion's base hue, with the most recently detected
