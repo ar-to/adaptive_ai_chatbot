@@ -141,6 +141,37 @@ def hue_to_hex(hue_degrees: float, sat: float = 0.65, val: float = 0.9) -> str:
     r, g, b = colorsys.hsv_to_rgb((hue_degrees % 360) / 360.0, sat, val)
     return f"#{int(r*255):02X}{int(g*255):02X}{int(b*255):02X}"
 
+# PRESET RECOMMENDATIONS
+# Hand-picked demo prompts with a hardcoded color outcome — no sentiment/emotion
+# model is consulted to pick these colors, unlike generate_adaptive_palette above.
+# Useful for known edge cases the models get wrong (e.g. the exam example below
+# reads as positive but is bittersweet). Swap this static lookup for an AI- or
+# frequency-driven mapping later (frequently asked messages, conversation context, etc).
+PRESET_THEME_HUES = {"teal": 180, "warm_yellow": 45}
+
+def build_preset_theme(theme_name: str, sat: float = 0.35, val: float = 0.90) -> dict:
+    """Same hex-derivation shape as generate_adaptive_palette, but from a fixed hue."""
+    hue_degrees = PRESET_THEME_HUES[theme_name]
+    r, g, b = colorsys.hsv_to_rgb((hue_degrees % 360) / 360.0, sat, val)
+    hex_bg = f"#{int(r*255):02X}{int(g*255):02X}{int(b*255):02X}"
+    hex_text = "#111827" if val > 0.5 else "#F9FAFB"
+    hex_accent = f"#{int(r*255*0.7):02X}{int(g*255*0.7):02X}{int(b*255*0.7):02X}"
+    return {
+        "background": hex_bg,
+        "text": hex_text,
+        "accent": hex_accent,
+        "input_bg": "#FFFFFF" if val > 0.5 else "#1F2937",
+        "input_border": hex_accent,
+    }
+
+PRESET_RECOMMENDATIONS = [
+    {"text": "its nice outside but I'm sick", "theme": "teal"},
+    {"text": "yea a hobby helps but...", "theme": "teal"},
+    {"text": "dancing helps lift my spirit", "theme": "warm_yellow"},
+    {"text": "Even though I failed the exam, I am proud of myself for trying my absolute best.", "theme": "warm_yellow"},
+]
+# PRESET RECOMMENDATIONS END
+
 def build_css(theme: dict) -> str:
     return f"""
     <style>
@@ -254,6 +285,12 @@ if __name__ == "__main__":
 
     st.caption("Free by default with local sentiment analysis. Add a Hugging Face token below for real AI replies using an LLM.")
 
+    # Reapply the last computed theme on every rerun (not just ones that process a new
+    # prompt) so the background doesn't flash back to default — e.g. on the extra rerun
+    # triggered below to re-enable the chat input after a preset response finishes.
+    if st.session_state.get("theme"):
+        st.markdown(build_css(st.session_state.theme), unsafe_allow_html=True)
+
     # Resolve the active HF token: prefer a Space secret (env var) over a pasted one.
     env_token = os.environ.get("HF_TOKEN")
     if env_token:
@@ -301,8 +338,50 @@ if __name__ == "__main__":
     runtime_traits = {"psychological": slider_psych, "philosophical": slider_philo, "support_ambiguity": support_ambiguity_toggle}
     # DOMAINS & SLIDERS END
 
+    # PRESET RECOMMENDATIONS UI
+    # A row of one-click buttons for the hardcoded prompts defined above. Clicking
+    # one submits its text the same way typing + Enter would. Whether that also
+    # forces the hardcoded PRESET_THEME_HUES color (vs. letting sentiment/emotion
+    # drive the color as usual) is controlled by the sidebar toggle below, so a
+    # preset can double as either a known-good demo color or just a quick-fill prompt.
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📌 Preset Recommendations")
+    use_preset_colors = st.sidebar.checkbox(
+        "Use preset colors",
+        value=True,
+        help="On: clicking a preset below applies its hardcoded color. Off: presets just fill in the prompt text and the color is computed normally from sentiment/emotion, same as typed input.",
+    )
+
+    st.caption("💡 Try a preset:")
+    preset_prompt = None
+    preset_theme_choice = None
+    preset_cols = st.columns(len(PRESET_RECOMMENDATIONS))
+    for col, rec in zip(preset_cols, PRESET_RECOMMENDATIONS):
+        with col:
+            label = rec["text"] if len(rec["text"]) <= 28 else rec["text"][:25] + "..."
+            if st.button(label, key=f"preset_{rec['text']}", help=rec["text"], use_container_width=True):
+                preset_prompt = rec["text"]
+                if use_preset_colors:
+                    preset_theme_choice = rec["theme"]
+            swatch = hue_to_hex(PRESET_THEME_HUES[rec["theme"]])
+            st.markdown(
+                f"<div style='text-align:center;font-size:0.7rem;opacity:0.7;'>"
+                f"<span style='display:inline-block;width:8px;height:8px;border-radius:50%;"
+                f"background:{swatch};margin-right:4px;'></span>{rec['theme'].replace('_', ' ').title()}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+    if use_preset_colors:
+        st.caption("POC note: preset prompts have hardcoded colors, not sentiment/emotion-driven ones. This simulates a known edge case where the sentiment model misreads a bittersweet message as positive, but the preset color is more appropriate.")
+    else:
+        st.caption("POC note: preset colors are off — presets just fill in the prompt text, and the color is computed from sentiment/emotion like any typed message.")
+    # PRESET RECOMMENDATIONS UI END
+
     # Accept user input
-    if prompt := st.chat_input("What is up?"):
+    # Chat box stays rendered (so layout doesn't jump) but disables itself for this
+    # run when a preset was just clicked, to avoid a race between the two inputs.
+    typed_prompt = st.chat_input("What is up?", disabled=preset_prompt is not None)
+    if prompt := (preset_prompt or typed_prompt):
 
         # Display user message in chat message container
         with st.chat_message("user"):
@@ -387,27 +466,45 @@ if __name__ == "__main__":
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-        EMOJI = {"positive": "😊", "negative": "😔", "neutral": "😐"}
-        if prompt.strip():
-            st.subheader(f"{EMOJI[user_sentiment]} Detected sentiment: {user_sentiment.title()}")
-            # st.caption(f"{pos_score} positive cue(s), {neg_score} negative cue(s) matched")
-        else:
-            st.caption("Waiting for input to analyze sentiment…")
-
+        # Rendered after the rerun below (see EMOJI subheader further down) so it
+        # survives the extra rerun triggered for presets, instead of flashing away.
+        st.session_state.last_sentiment = user_sentiment if prompt.strip() else None
 
         # FAST RUNTIME ADAPTATION LAYER
-        # Pass both sentiment and emotion to the neurosymbolic layout matrix
-        theme = generate_adaptive_palette(
-            user_sentiment=user_sentiment,            # Controls macro contrast/bounds
-            emotion_breakdown=emotion_breakdown,      # Controls micro hue calculations
-            active_domain=selected_domain,            # Sets domain constraints
-            trait_sliders=runtime_traits            # Modulates runtime scaling weights
-        )
+        # Pass both sentiment and emotion to the neurosymbolic layout matrix.
+        # Preset recommendations skip this entirely — their color is pre-determined.
+        if preset_theme_choice:
+            theme = build_preset_theme(preset_theme_choice)
+        else:
+            theme = generate_adaptive_palette(
+                user_sentiment=user_sentiment,            # Controls macro contrast/bounds
+                emotion_breakdown=emotion_breakdown,      # Controls micro hue calculations
+                active_domain=selected_domain,            # Sets domain constraints
+                trait_sliders=runtime_traits            # Modulates runtime scaling weights
+            )
 
         # print(f"DEBUG: Generated theme: {theme} for sentiment={user_sentiment}, emotion={user_emotion}, domain={selected_domain}, traits={runtime_traits}")
 
-        # Apply calculated style modifications immediately
+        # Apply calculated style modifications immediately, and remember it so the
+        # reapply-on-every-run block above can restore it on subsequent reruns.
+        st.session_state.theme = theme
         st.markdown(build_css(theme), unsafe_allow_html=True)
+
+        # The chat input was rendered disabled=True this run (see above) to stop it
+        # racing the preset button. Rerun once now that the response is fully in
+        # session_state, so the next render re-enables it — the theme reapply block
+        # above keeps the just-applied color from flashing back to default meanwhile.
+        if preset_prompt:
+            st.rerun()
+
+    # Rendered unconditionally (like the theme reapply block above) so it survives
+    # the preset rerun instead of only showing for one frame before vanishing.
+    EMOJI = {"positive": "😊", "negative": "😔", "neutral": "😐"}
+    if st.session_state.get("last_sentiment"):
+        st.subheader(f"{EMOJI[st.session_state.last_sentiment]} Detected sentiment: {st.session_state.last_sentiment.title()}")
+    else:
+        st.caption("Waiting for input to analyze sentiment…")
+
     st.caption("POC note: sentiment detection uses simple keyword matching — swap in a fine-tuned model for production.")
 
     # EMOTION HUE LEGEND
